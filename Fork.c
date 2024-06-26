@@ -6,14 +6,14 @@
 #include <sys/sem.h>
 
 // Definições
-#define NUM_PISTAS 10  // 5 pistas principais e 5 laterais
+#define NUM_PISTAS 10  // 5 pistas ida e 5 volta
 #define MAX_CARROS 100
 #define VEICULOS_FLUXO_BAIXO 30
 #define VEICULOS_FLUXO_MEDIO 60
 #define VEICULOS_FLUXO_ALTO 90
 #define MAX_CONGESTIONAMENTO 10000  // Distância de Congestionamento em metros
 
-// Enumeração para direção das pistas
+//Struct Pista
 typedef enum {
     PRINCIPAL_DUPLO,
     PRINCIPAL_SIMPLES,
@@ -78,7 +78,7 @@ void inicia_pistas() {
     }
 }
 
-// Processo simulando o comportamento de um carro
+// Processo simulando
 void carro_process(int carro_id, int pista_id) {
     Pista* pista = &pistas[pista_id];
     Carro carro = {carro_id, pista_id};
