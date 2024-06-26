@@ -10,7 +10,7 @@
 #define VEICULOS_FLUXO_BAIXO 30
 #define VEICULOS_FLUXO_MEDIO 60
 #define VEICULOS_FLUXO_ALTO 90
-#define MAX_CONGESTIONAMENTO 10000  // Representa o congestionamento para até 10 km
+#define MAX_CONGESTIONAMENTO 10000  // Distancia de Congestionamento em metros
 
 typedef struct {
     int id;
@@ -26,7 +26,7 @@ Pista* pistas;
 int* ponte_fechada;
 int* contador_carros;
 int* simulacao_ativa;
-int taxa_fluxo = VEICULOS_FLUXO_BAIXO;  // Pode ser ajustado para VEICULOS_FLUXO_BAIXO, VEICULOS_FLUXO_MEDIO, ou VEICULOS_FLUXO_ALTO
+int taxa_fluxo = VEICULOS_FLUXO_BAIXO;  //Ajustar conforme o Define
 int shm_id_pistas, shm_id_ponte, shm_id_contador, shm_id_simulacao;
 int sem_id_pistas, sem_id_ponte, sem_id_contador;
 
