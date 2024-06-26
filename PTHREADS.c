@@ -10,8 +10,14 @@
 #define VEICULOS_FLUXO_ALTO 90
 #define MAX_CONGESTIONAMENTO 10000  // Representa o congestionamento para até 10 km
 
+typedef enum {
+    IDA,
+    VOLTA
+} Direcao;
+
 typedef struct {
     int id;
+    Direcao direcao;
     int conta_carro;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
@@ -33,6 +39,11 @@ pthread_mutex_t contador_mutex = PTHREAD_MUTEX_INITIALIZER;
 void inicia_pistas() {
     for (int i = 0; i < NUM_PISTAS; i++) {
         pistas[i].id = i;
+        if (i < NUM_PISTAS / 2) {
+            pistas[i].direcao = IDA;
+        } else {
+            pistas[i].direcao = VOLTA;
+        }
         pistas[i].conta_carro = 0;
         pthread_mutex_init(&pistas[i].mutex, NULL);
         pthread_cond_init(&pistas[i].cond, NULL);
@@ -51,7 +62,8 @@ void* carro_thread(void* arg) {
     }
 
     pista->conta_carro++;
-    printf("Carro %d entrou na pista %d, total de carros: %d\n", carro->id, pista_id, pista->conta_carro);
+    printf("Carro %d entrou na pista %d %s, total de carros: %d\n", carro->id, pista_id,
+           pista->direcao == IDA ? "IDA" : "VOLTA", pista->conta_carro);
 
     pthread_mutex_unlock(&pista->mutex);
     
@@ -68,7 +80,8 @@ void* carro_thread(void* arg) {
     pthread_mutex_lock(&pista->mutex);
 
     pista->conta_carro--;
-    printf("Carro %d saiu da pista %d, total de carros: %d\n", carro->id, pista_id, pista->conta_carro);
+    printf("Carro %d saiu da pista %d %s, total de carros: %d\n", carro->id, pista_id,
+           pista->direcao == IDA ? "IDA" : "VOLTA", pista->conta_carro);
 
     pthread_cond_signal(&pista->cond);
     pthread_mutex_unlock(&pista->mutex);
@@ -80,7 +93,7 @@ void* carro_thread(void* arg) {
 
 void* monitor_thread(void* arg) {
     while (1) {
-        sleep(2);  // Intervalo de 5 segundos para monitorar
+        sleep(2);  // Intervalo de 2 segundos para monitorar
         int total_carros = 0;
         for (int i = 0; i < NUM_PISTAS; i++) {
             pthread_mutex_lock(&pistas[i].mutex);
@@ -98,7 +111,7 @@ void* controle_fluxo_thread(void* arg) {
         pthread_cond_broadcast(&ponte_cond);  // Notifica todos os carros aguardando
         sleep(60 / taxa_fluxo);  // Tempo para permitir que carros passem
         ponte_fechada = 1;  // Fecha a ponte
-        sleep(2);  // Mantém a ponte fechada por 1 minuto
+        sleep(2);  // Mantém a ponte fechada por 2 segundos
     }
     return NULL;
 }
@@ -129,7 +142,7 @@ int main() {
 
         Carro* carro = (Carro*)malloc(sizeof(Carro));
         carro->id = carro_id;
-        carro->pista_id = rand() % NUM_PISTAS;  // Aleatoriamente escolhe pista pro carro
+        carro->pista_id = (rand() % (NUM_PISTAS / 2)) + (carro->id % 2 == 0 ? 0 : NUM_PISTAS / 2);  // Aleatoriamente escolhe pista pro carro
 
         if (pthread_create(&carro_threads[i], NULL, carro_thread, carro) != 0) {
             perror("Falha ao criar thread");
