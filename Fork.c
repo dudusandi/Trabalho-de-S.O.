@@ -1,19 +1,20 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdlib.h> 
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/shm.h>
 #include <sys/sem.h>
+#include <time.h>  // Para srand e rand
 
 // Definições
-#define NUM_PISTAS 10  // 5 pistas ida e 5 volta
+#define NUM_PISTAS 10  // 5 pistas principais e 5 laterais
 #define MAX_CARROS 100
 #define VEICULOS_FLUXO_BAIXO 30
 #define VEICULOS_FLUXO_MEDIO 60
 #define VEICULOS_FLUXO_ALTO 90
 #define MAX_CONGESTIONAMENTO 10000  // Distância de Congestionamento em metros
 
-//Struct Pista
+// Enumeração para direção das pistas
 typedef enum {
     PRINCIPAL_DUPLO,
     PRINCIPAL_SIMPLES,
@@ -31,7 +32,8 @@ typedef struct {
 // Struct do Carro
 typedef struct {
     int id;
-    int pista_atual;
+    int pista_id;
+    int pista_origem;
 } Carro;
 
 // Variáveis e Ponteiros
@@ -78,10 +80,35 @@ void inicia_pistas() {
     }
 }
 
-// Processo simulando
+// Função para verificar e mudar de pista se houver congestionamento
+int verifica_muda_pista(int carro_id, int pista_id) {
+    Pista* pista_atual = &pistas[pista_id];
+
+    // Verifica se há congestionamento na pista atual
+    if (pista_atual->conta_carro >= MAX_CONGESTIONAMENTO) {
+        // Tentar mudar para outra pista disponível
+        for (int i = 0; i < NUM_PISTAS; i++) {
+            if (i != pista_id) {  // Evita verificar a mesma pista
+                sem_fecha(sem_id_pistas, i);
+                if (pistas[i].conta_carro < MAX_CONGESTIONAMENTO) {
+                    // Realiza a mudança de faixa
+                    printf("Carro %d mudou da pista %d para a pista %d devido a congestionamento\n", carro_id, pista_id, i);
+                    pista_atual->conta_carro--;
+                    sem_abre(sem_id_pistas, pista_id);
+                    sem_abre(sem_id_pistas, i);
+                    return i;  // Retorna a nova pista para onde o carro mudou
+                }
+                sem_abre(sem_id_pistas, i);
+            }
+        }
+    }
+
+    return pista_id;  // Mantém na mesma pista se não houver mudança
+}
+
+// Processo simulando o comportamento de um carro
 void carro_process(int carro_id, int pista_id) {
     Pista* pista = &pistas[pista_id];
-    Carro carro = {carro_id, pista_id};
     sem_fecha(sem_id_pistas, pista_id);
 
     while (pista->conta_carro >= MAX_CONGESTIONAMENTO) {
@@ -108,19 +135,18 @@ void carro_process(int carro_id, int pista_id) {
 
     sleep(1);  // Simula o tempo de atravessar a ponte
 
-    // Mudança de pista após congestionamento
-    if (carro_id % 3 == 0) {  
-        int nova_pista_id = rand() % NUM_PISTAS;
-        if (nova_pista_id != pista_id) {
-            sem_fecha(sem_id_pistas, pista_id);
-            sem_fecha(sem_id_pistas, nova_pista_id);
-            pista->conta_carro--;
-            pistas[nova_pista_id].conta_carro++;
+    // Verifica e muda de pista se necessário
+    int nova_pista_id = verifica_muda_pista(carro_id, pista_id);
 
-            printf("Carro %d mudou da pista %d para a pista %d\n", carro_id, pista_id, nova_pista_id);
-
-            sem_abre(sem_id_pistas, pista_id);
-            sem_abre(sem_id_pistas, nova_pista_id);
+    // Se mudou de pista, reinicia o processo na nova pista
+    if (nova_pista_id != pista_id) {
+        carro_process(carro_id, nova_pista_id);
+    } else {
+        // Se não mudou de pista, verifica se deve voltar para a pista de origem
+        if (pista_id != ((Carro*) shmat(shm_id_pistas, NULL, 0))[carro_id].pista_origem) {
+            int pista_origem = ((Carro*) shmat(shm_id_pistas, NULL, 0))[carro_id].pista_origem;
+            printf("Carro %d está retornando à pista de origem %d\n", carro_id, pista_origem);
+            carro_process(carro_id, pista_origem);
         }
     }
 
@@ -205,12 +231,18 @@ int main() {
     }
 
     // Cria processos de carros
+    srand(time(NULL));  // Inicializa a semente para geração de números aleatórios
+
     for (int i = 0; i < MAX_CARROS; i++) {
         sem_fecha(sem_id_contador, 0);
         int carro_id = (*contador_carros)++;
         sem_abre(sem_id_contador, 0);
 
         int pista_id = rand() % NUM_PISTAS;  // Aleatoriamente escolhe pista para o carro
+        int pista_origem = pista_id;  // Pista de origem é a escolhida inicialmente
+
+        // Armazena a pista de origem na estrutura do carro
+        ((Carro*) shmat(shm_id_pistas, NULL, 0))[carro_id].pista_origem = pista_origem;
 
         if (fork() == 0) {
             carro_process(carro_id, pista_id);
