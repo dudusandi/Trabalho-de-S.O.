@@ -15,10 +15,17 @@
 #define MAX_CONGESTIONAMENTO 10000  // Distancia de Congestionamento em metros
 
 
+//Enumeração para direção das pistas
+typedef enum {
+    IDA,
+    VOLTA
+} Direcao;
+
 //Struct
 typedef struct {
     int id;
     int conta_carro;
+    Direcao direcao;  // Adicionando direção à pista
 } Pista;
 
 //Struct
@@ -59,6 +66,11 @@ void inicia_pistas() {
     for (int i = 0; i < NUM_PISTAS; i++) {
         pistas[i].id = i;          //Variavel da Pista
         pistas[i].conta_carro = 0; //Contador de Carros
+        // Definindo a direção das pistas alternadamente
+        if (i % 2 == 0)
+            pistas[i].direcao = IDA;
+        else
+            pistas[i].direcao = VOLTA;
     }
 }
 
@@ -77,7 +89,7 @@ void carro_process(int carro_id, int pista_id) {
 
     
     pista->conta_carro++; //Contador de Carros
-    printf("Carro %d entrou na pista %d (Carros na Pista: %d)\n", carro_id, pista_id, pista->conta_carro); //Sauda de Dados
+    printf("Carro %d entrou na pista %d (Carros na Pista: %d, Direcao: %s)\n", carro_id, pista_id, pista->conta_carro, (pista->direcao == IDA ? "IDA" : "VOLTA")); //Sauda de Dados
     sem_abre(sem_id_pistas, pista_id);  //Controle de Semaforo (Aberto)
     
     
@@ -94,7 +106,7 @@ void carro_process(int carro_id, int pista_id) {
 
     sem_fecha(sem_id_pistas, pista_id);   //Controle de Semaforo (Fechado)
     pista->conta_carro--;                // Contador de Carros que sairam da pista
-    printf("Carro %d saiu da pista %d (Carros nessa Pista %d)\n", carro_id, pista_id, pista->conta_carro);
+    printf("Carro %d saiu da pista %d (Carros nessa Pista %d, Direcao: %s)\n", carro_id, pista_id, pista->conta_carro, (pista->direcao == IDA ? "IDA" : "VOLTA"));
     sem_abre(sem_id_pistas, pista_id); //Controle de Semaforo (Aberto)
 
     exit(0);
@@ -151,6 +163,10 @@ int main() {
     //Criação dos semaforos usando semget
     sem_id_pistas = semget(IPC_PRIVATE, NUM_PISTAS, IPC_CREAT | 0666);
     sem_id_ponte = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
+    sem_id_contador;
+    //Criação dos semaforos usando semget
+    sem_id_pistas = semget(IPC_PRIVATE, NUM_PISTAS, IPC_CREAT | 0666);
+    sem_id_ponte = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
     sem_id_contador = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
     
     //Controlador de Operaçoes de semaforos semctl
@@ -176,7 +192,8 @@ int main() {
         int carro_id = (*contador_carros)++;
         sem_abre(sem_id_contador, 0);
 
-        int pista_id = rand() % NUM_PISTAS;  // Aleatoriamente escolhe pista pro carro
+        // Escolha aleatória da pista
+        int pista_id = rand() % NUM_PISTAS;
 
         if (fork() == 0) {
             carro_process(carro_id, pista_id);
@@ -193,11 +210,6 @@ int main() {
     // Finaliza simulação
     *simulacao_ativa = 0;
 
-
-    //Necessario dependente o compilador e a memoria disponivel 
-    //wait(NULL);
-    //wait(NULL);
-    
     // Limpar Memoria
     shmdt(pistas);
     shmdt(ponte_fechada);
