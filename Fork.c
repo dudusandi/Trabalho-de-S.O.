@@ -1,49 +1,49 @@
 #include <stdio.h>
 #include <stdlib.h> 
-#include <unistd.h>   //Unix
-#include <sys/wait.h> //Unix
-#include <sys/shm.h>  //Memoria Compartilhada
-#include <sys/sem.h>  //Semaforos
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/shm.h>
+#include <sys/sem.h>
 
-
-//Definições 
-#define NUM_PISTAS 10
+// Definições
+#define NUM_PISTAS 10  // 5 pistas principais e 5 laterais
 #define MAX_CARROS 100
 #define VEICULOS_FLUXO_BAIXO 30
 #define VEICULOS_FLUXO_MEDIO 60
 #define VEICULOS_FLUXO_ALTO 90
-#define MAX_CONGESTIONAMENTO 10000  // Distancia de Congestionamento em metros
+#define MAX_CONGESTIONAMENTO 10000  // Distância de Congestionamento em metros
 
-
-//Enumeração para direção das pistas
+// Enumeração para direção das pistas
 typedef enum {
-    IDA,
-    VOLTA
-} Direcao;
+    PRINCIPAL_DUPLO,
+    PRINCIPAL_SIMPLES,
+    LATERAL_DUPLO,
+    LATERAL_SIMPLES
+} TipoPista;
 
-//Struct
+// Struct da Pista
 typedef struct {
     int id;
     int conta_carro;
-    Direcao direcao;  // Adicionando direção à pista
+    TipoPista tipo;
 } Pista;
 
-//Struct
+// Struct do Carro
 typedef struct {
     int id;
     int pista_id;
 } Carro;
 
-//Variaveis e Ponteiros
+// Variáveis e Ponteiros
 Pista* pistas;
 int* ponte_fechada;
 int* contador_carros;
 int* simulacao_ativa;
-int taxa_fluxo = VEICULOS_FLUXO_BAIXO;  //Ajustar conforme o Define
+int taxa_fluxo = VEICULOS_FLUXO_BAIXO;  // Ajustar conforme o Define
 int shm_id_pistas, shm_id_ponte, shm_id_contador, shm_id_simulacao;
 int sem_id_pistas, sem_id_ponte, sem_id_contador;
 
-//Operaçoes de Lock e Unlock
+// Operações de Lock e Unlock
 void sem_fecha(int sem_id, int sem_num) {
     struct sembuf sops;
     sops.sem_num = sem_num;
@@ -52,7 +52,6 @@ void sem_fecha(int sem_id, int sem_num) {
     semop(sem_id, &sops, 1);
 }
 
-//Operaçoes de Lock e Unlock
 void sem_abre(int sem_id, int sem_num) {
     struct sembuf sops;
     sops.sem_num = sem_num;
@@ -61,115 +60,117 @@ void sem_abre(int sem_id, int sem_num) {
     semop(sem_id, &sops, 1);
 }
 
-//Criação das pistas usando Define
+// Inicializa as pistas com características diferentes
 void inicia_pistas() {
+    int pista_id = 0;
     for (int i = 0; i < NUM_PISTAS; i++) {
-        pistas[i].id = i;          //Variavel da Pista
-        pistas[i].conta_carro = 0; //Contador de Carros
-        // Definindo a direção das pistas alternadamente
-        if (i % 2 == 0)
-            pistas[i].direcao = IDA;
-        else
-            pistas[i].direcao = VOLTA;
+        pistas[i].id = i;
+        pistas[i].conta_carro = 0;
+        if (i < NUM_PISTAS / 4) {
+            pistas[i].tipo = PRINCIPAL_DUPLO;  // Pistas principais duplas
+        } else if (i < NUM_PISTAS / 2) {
+            pistas[i].tipo = PRINCIPAL_SIMPLES; // Pistas principais simples
+        } else if (i < 3 * NUM_PISTAS / 4) {
+            pistas[i].tipo = LATERAL_DUPLO;  // Pistas laterais duplas
+        } else {
+            pistas[i].tipo = LATERAL_SIMPLES; // Pistas laterais simples
+        }
     }
 }
 
-
-//Simula a entrada e saida de um carro na pista. Se a pista estiver congestionada, o carro espera.
-//Também verifica se a ponte está fechada e espera até que esteja aberta para atravessar.
-
+// Processo simulando o comportamento de um carro
 void carro_process(int carro_id, int pista_id) {
-    Pista* pista = &pistas[pista_id];         //Ponteiros para Pistas
-    sem_fecha(sem_id_pistas, pista_id);        //Controle de Semaforo (Fechado)
-    while (pista->conta_carro >= MAX_CONGESTIONAMENTO) { // Condição para o Maximo de Transito
-        sem_abre(sem_id_pistas, pista_id);  //Controle de Semaforo (Aberto)
-        usleep(100000);                       // Espera um pouco antes de verificar novamente
-        sem_fecha(sem_id_pistas, pista_id);    //Controle de Semaforo (Fechado)
+    Pista* pista = &pistas[pista_id];
+    sem_fecha(sem_id_pistas, pista_id);
+
+    while (pista->conta_carro >= MAX_CONGESTIONAMENTO) {
+        sem_abre(sem_id_pistas, pista_id);
+        usleep(100000);
+        sem_fecha(sem_id_pistas, pista_id);
     }
 
-    
-    pista->conta_carro++; //Contador de Carros
-    printf("Carro %d entrou na pista %d (Carros na Pista: %d, Direcao: %s)\n", carro_id, pista_id, pista->conta_carro, (pista->direcao == IDA ? "IDA" : "VOLTA")); //Sauda de Dados
-    sem_abre(sem_id_pistas, pista_id);  //Controle de Semaforo (Aberto)
-    
-    
-    // Simula passar na ponte
-    sem_fecha(sem_id_ponte, 0);          //Controle de Semaforo (Fechado)
+    pista->conta_carro++;
+    printf("Carro %d entrou na pista %d (Carros na Pista: %d, Tipo: %s)\n", carro_id, pista_id, pista->conta_carro,
+           (pista->tipo == PRINCIPAL_DUPLO ? "IDA Duplo" :
+            pista->tipo == PRINCIPAL_SIMPLES ? "IDA Simples" :
+            pista->tipo == LATERAL_DUPLO ? "VOLTA Duplo" : "VOLTA Simples"));
+    sem_abre(sem_id_pistas, pista_id);
+
+    // Simula a passagem pela ponte
+    sem_fecha(sem_id_ponte, 0);
     while (*ponte_fechada) {
-        sem_abre(sem_id_ponte, 0);    //Controle de Semaforo (Aberto)
-        usleep(100000);                 // Espera um pouco antes de verificar novamente
-        sem_fecha(sem_id_ponte, 0);      //Controle de Semaforo (Fechado)
+        sem_abre(sem_id_ponte, 0);
+        usleep(100000);
+        sem_fecha(sem_id_ponte, 0);
     }
-    sem_abre(sem_id_ponte, 0); //Controle de Semaforo (Aberto)
+    sem_abre(sem_id_ponte, 0);
 
     sleep(1);  // Simula o tempo de atravessar a ponte
 
-    sem_fecha(sem_id_pistas, pista_id);   //Controle de Semaforo (Fechado)
-    pista->conta_carro--;                // Contador de Carros que sairam da pista
-    printf("Carro %d saiu da pista %d (Carros nessa Pista %d, Direcao: %s)\n", carro_id, pista_id, pista->conta_carro, (pista->direcao == IDA ? "IDA" : "VOLTA"));
-    sem_abre(sem_id_pistas, pista_id); //Controle de Semaforo (Aberto)
+    sem_fecha(sem_id_pistas, pista_id);
+    pista->conta_carro--;
+    printf("Carro %d saiu da pista %d (Carros nessa Pista %d, Tipo: %s)\n", carro_id, pista_id, pista->conta_carro,
+           (pista->tipo == PRINCIPAL_DUPLO ? "IDA Duplo" :
+            pista->tipo == PRINCIPAL_SIMPLES ? "IDA Simples" :
+            pista->tipo == LATERAL_DUPLO ? "VOLTA Duplo" : "VOLTA Simples"));
+    sem_abre(sem_id_pistas, pista_id);
 
     exit(0);
 }
 
-// Monitor de carros TOTAIS na ponte
+// Processo monitorando o total de carros nas pistas
 void monitor_process() {
     while (*simulacao_ativa) {
-        sleep(2);                                   // Intervalo de 2 segundos para monitorar
-        int total_carros = 0;                       //Contador de Carros
+        sleep(2);
+        int total_carros = 0;
         for (int i = 0; i < NUM_PISTAS; i++) {
-            sem_fecha(sem_id_pistas, i);             //Controle de Semaforo (Fechado)
-            total_carros += pistas[i].conta_carro;  //Contagem de carros por pista
-            sem_abre(sem_id_pistas, i);           //Controle de Semaforo (Aberto)
+            sem_fecha(sem_id_pistas, i);
+            total_carros += pistas[i].conta_carro;
+            sem_abre(sem_id_pistas, i);
         }
-        //Saida de Dados
         printf("Total de carros acumulados: %d\n", total_carros);
     }
     exit(0);
 }
 
-//Controle de Fluxo
+// Processo controlando o fluxo na ponte
 void controle_fluxo_process() {
     while (*simulacao_ativa) {
-        sem_fecha(sem_id_ponte, 0);      //Controle de Semaforo (Fechado)
-        *ponte_fechada = 0;             // Abre a ponte
-        sem_abre(sem_id_ponte, 0);    //Controle de Semaforo (Aberto)
-        sleep(60 / taxa_fluxo);         // Tempo para permitir que carros passem
-        sem_fecha(sem_id_ponte, 0);      //Controle de Semaforo (Fechado)
-        *ponte_fechada = 1;             // Fecha a ponte
-        sem_abre(sem_id_ponte, 0);    //Controle de Semaforo (Aberto)
-        sleep(2);                       // Mantém a ponte fechada por 2 segundos
+        sem_fecha(sem_id_ponte, 0);
+        *ponte_fechada = 0;
+        sem_abre(sem_id_ponte, 0);
+        sleep(60 / taxa_fluxo);
+        sem_fecha(sem_id_ponte, 0);
+        *ponte_fechada = 1;
+        sem_abre(sem_id_ponte, 0);
+        sleep(2);
     }
     exit(0);
 }
 
 int main() {
-    // Criaçao de segmentos de memoria shmget
+    // Criação de segmentos de memória
     shm_id_pistas = shmget(IPC_PRIVATE, NUM_PISTAS * sizeof(Pista), IPC_CREAT | 0666);
     shm_id_ponte = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     shm_id_contador = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     shm_id_simulacao = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
-    
-    // Inserção dos segmentos na memoria shmat
-    pistas = (Pista*)shmat(shm_id_pistas, NULL, 0);
-    ponte_fechada = (int*)shmat(shm_id_ponte, NULL, 0);
-    contador_carros = (int*)shmat(shm_id_contador, NULL, 0);
-    simulacao_ativa = (int*)shmat(shm_id_simulacao, NULL, 0);
 
-    *ponte_fechada = 1;     // Ponte começa fechada
-    *contador_carros = 0;   // Contador de carros zerado
-    *simulacao_ativa = 1;   // Iniciar Simulação
+    // Atribuição dos segmentos à memória compartilhada
+    pistas = (Pista*) shmat(shm_id_pistas, NULL, 0);
+    ponte_fechada = (int*) shmat(shm_id_ponte, NULL, 0);
+    contador_carros = (int*) shmat(shm_id_contador, NULL, 0);
+    simulacao_ativa = (int*) shmat(shm_id_simulacao, NULL, 0);
 
-    //Criação dos semaforos usando semget
-    sem_id_pistas = semget(IPC_PRIVATE, NUM_PISTAS, IPC_CREAT | 0666);
-    sem_id_ponte = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
-    sem_id_contador;
-    //Criação dos semaforos usando semget
+    *ponte_fechada = 1;    // Ponte começa fechada
+    *contador_carros = 0;  // Contador de carros zerado
+    *simulacao_ativa = 1;  // Iniciar simulação
+
+    // Criação dos semáforos
     sem_id_pistas = semget(IPC_PRIVATE, NUM_PISTAS, IPC_CREAT | 0666);
     sem_id_ponte = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
     sem_id_contador = semget(IPC_PRIVATE, 1, IPC_CREAT | 0666);
-    
-    //Controlador de Operaçoes de semaforos semctl
+
+    // Inicialização dos semáforos
     for (int i = 0; i < NUM_PISTAS; i++) {
         semctl(sem_id_pistas, i, SETVAL, 1);
     }
@@ -192,12 +193,12 @@ int main() {
         int carro_id = (*contador_carros)++;
         sem_abre(sem_id_contador, 0);
 
-        // Escolha aleatória da pista
-        int pista_id = rand() % NUM_PISTAS;
+        int pista_id = rand() % NUM_PISTAS;  // Aleatoriamente escolhe pista para o carro
 
         if (fork() == 0) {
             carro_process(carro_id, pista_id);
         }
+
         // Simula taxa de chegada
         usleep(1000000 / taxa_fluxo);  // Ajustar para diferentes fluxos
     }
@@ -210,7 +211,7 @@ int main() {
     // Finaliza simulação
     *simulacao_ativa = 0;
 
-    // Limpar Memoria
+    // Limpar Memória Compartilhada e Semáforos
     shmdt(pistas);
     shmdt(ponte_fechada);
     shmdt(contador_carros);
@@ -225,3 +226,4 @@ int main() {
 
     return 0;
 }
+
