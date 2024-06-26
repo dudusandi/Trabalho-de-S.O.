@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <stdlib.h> 
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/shm.h>
@@ -31,7 +31,7 @@ typedef struct {
 // Struct do Carro
 typedef struct {
     int id;
-    int pista_id;
+    int pista_atual;
 } Carro;
 
 // Variáveis e Ponteiros
@@ -81,6 +81,7 @@ void inicia_pistas() {
 // Processo simulando o comportamento de um carro
 void carro_process(int carro_id, int pista_id) {
     Pista* pista = &pistas[pista_id];
+    Carro carro = {carro_id, pista_id};
     sem_fecha(sem_id_pistas, pista_id);
 
     while (pista->conta_carro >= MAX_CONGESTIONAMENTO) {
@@ -106,6 +107,22 @@ void carro_process(int carro_id, int pista_id) {
     sem_abre(sem_id_ponte, 0);
 
     sleep(1);  // Simula o tempo de atravessar a ponte
+
+    // Mudança de pista após congestionamento
+    if (carro_id % 3 == 0) {  
+        int nova_pista_id = rand() % NUM_PISTAS;
+        if (nova_pista_id != pista_id) {
+            sem_fecha(sem_id_pistas, pista_id);
+            sem_fecha(sem_id_pistas, nova_pista_id);
+            pista->conta_carro--;
+            pistas[nova_pista_id].conta_carro++;
+
+            printf("Carro %d mudou da pista %d para a pista %d\n", carro_id, pista_id, nova_pista_id);
+
+            sem_abre(sem_id_pistas, pista_id);
+            sem_abre(sem_id_pistas, nova_pista_id);
+        }
+    }
 
     sem_fecha(sem_id_pistas, pista_id);
     pista->conta_carro--;
